@@ -37,10 +37,15 @@ const NEXTCLOUD_ORIGIN = "https://wolke.ethz.ch";
 // Worker (und damit Cloudflare als Zwischenstation) gar nicht mehr gebraucht.
 const PROXY_URL = "";
 
-// Ordner im persönlichen Dateibereich auf wolke.ethz.ch. Darin liegen die
-// Jahres-CSVs (zeiterfassung_2026.csv) und die Projektliste projekte.txt.
-// Wird bei Bedarf automatisch angelegt.
-const DATA_FOLDER_PATH = "Zeiterfassung";
+// Ordner im persönlichen Dateibereich auf wolke.ethz.ch, mit "/" getrennt.
+// Darin liegen die Projektliste und die Jahres-CSVs
+// (zeiterfassung_2026.csv). Fehlende Ebenen legt die App selbst an.
+const DATA_FOLDER_PATH = "LLHIL_Jonas/Zeiterfassung";
+
+// Die Projektliste. WebDAV unterscheidet Gross-/Kleinschreibung -- dieser
+// Name muss exakt so auf der Nextcloud stehen, sonst kommt beim Laden ein
+// 404 und die App bleibt bei der zuletzt bekannten Liste.
+const PROJEKTE_DATEINAME = "Projekte.txt";
 
 // ---------- localStorage-Namensraum ----------
 //
@@ -157,8 +162,8 @@ function ladeDemoSeed() {
   return demoSeedPromise;
 }
 
-// Aus "remote.php/dav/files/demo/Zeiterfassung/..." wird der Schlüssel
-// "Zeiterfassung/..." -- so sind die Pfade in demo/seed.json lesbar.
+// Aus "remote.php/dav/files/demo/LLHIL_Jonas/Zeiterfassung/..." wird der Schlüssel
+// "LLHIL_Jonas/Zeiterfassung/..." -- so sind die Pfade in demo/seed.json lesbar.
 const DEMO_PREFIX = `remote.php/dav/files/${DEMO_USER}/`;
 function demoSchluessel(path) {
   const clean = String(path).replace(/^\/+/, "");
@@ -242,7 +247,7 @@ async function demoFetch(relativePath, options) {
 
 // Einziger Ausgang zur Nextcloud. relativePath ist komplett relativ zur
 // Nextcloud-Domain, z.B.
-// "remote.php/dav/files/jonasha/Zeiterfassung/zeiterfassung_2026.csv".
+// "remote.php/dav/files/jonasha/LLHIL_Jonas/Zeiterfassung/zeiterfassung_2026.csv".
 function proxyFetch(relativePath, options = {}) {
   if (istDemo()) return demoFetch(relativePath, options);
   const clean = String(relativePath).replace(/^\/+/, "");
@@ -259,7 +264,7 @@ function davPath(relativeToUser) {
 }
 
 // Segmente relativ zum persönlichen Nextcloud-Dateibereich, z.B.
-// ncSegments("Zeiterfassung") -> [username, "Zeiterfassung"].
+// ncSegments("LLHIL_Jonas/Zeiterfassung") -> [username, "LLHIL_Jonas", "Zeiterfassung"].
 function ncSegments(folderPath) {
   return [istDemo() ? DEMO_USER : settings.username, ...folderPath.split("/").filter(Boolean)];
 }
@@ -267,27 +272,28 @@ function ncSegments(folderPath) {
 // ---------- Projektliste (projekte.txt) ----------
 //
 // Die Projektliste steht als einfache Textdatei auf der Nextcloud, ein
-// Projekt pro Zeile, optional "NNN Titel". Bewusst Text und nicht JSON: die
-// Liste wird von Hand gepflegt, und eine Textdatei hat kein Syntaxrisiko
-// durch Kommas/Anführungszeichen. Ändern = Datei in Nextcloud bearbeiten,
-// alle Geräte ziehen spätestens nach 60s nach, kein Deploy nötig.
+// Projekt pro Zeile. Bewusst Text und nicht JSON: die Liste wird von Hand
+// gepflegt, und eine Textdatei hat kein Syntaxrisiko durch
+// Kommas/Anführungszeichen. Ändern = Datei in Nextcloud bearbeiten, alle
+// Geräte ziehen spätestens nach 60s nach, kein Deploy nötig.
 let projekte = loadJSON(LS_PROJEKTE_CACHE, []);
 
 function projekteDavPath() {
-  return davPath([...ncSegments(DATA_FOLDER_PATH), "projekte.txt"].join("/"));
+  return davPath([...ncSegments(DATA_FOLDER_PATH), PROJEKTE_DATEINAME].join("/"));
 }
 
-// Jede Zeile ist entweder "NNN Projekttitel" (dreistellige Nummer,
-// Leerschlag, Titel -- die Nummer ist rein kosmetisch) oder nur der Titel.
+// Eine Zeile = ein Projekt, die ganze Zeile ist der Name. Die Büro-App
+// parste hier zusätzlich eine führende dreistellige Projektnummer heraus
+// ("021 Neubau Werkhof"); hier gibt es keine Nummern, und das Herausparsen
+// würde einen Namen, der zufällig mit drei Ziffern beginnt, stillschweigend
+// verstümmeln. id ist nur noch die Position (für die Sortierung der
+// "Heute"-Liste in Dateireihenfolge).
 function parseProjectList(text) {
   return text
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean)
-    .map((line, i) => {
-      const m = /^(\d{3})\s+(.+)$/.exec(line);
-      return m ? { id: m[1], name: m[2] } : { id: `P${i + 1}`, name: line };
-    });
+    .map((name, i) => ({ id: `P${i + 1}`, name }));
 }
 
 // Schlägt das Laden fehl (offline, Datei noch nicht angelegt), bleibt der
@@ -300,7 +306,7 @@ async function refreshProjekte() {
     projekte = parseProjectList(await res.text());
     saveJSON(LS_PROJEKTE_CACHE, projekte);
   } catch (err) {
-    console.warn("projekte.txt konnte nicht geladen werden:", err);
+    console.warn(`${PROJEKTE_DATEINAME} konnte nicht geladen werden:`, err);
   }
   return projekte;
 }

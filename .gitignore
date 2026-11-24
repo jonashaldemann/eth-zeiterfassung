@@ -6,7 +6,7 @@ Thumbs.db
 # ausschliesslich auf wolke.ethz.ch (siehe README, "Ablage auf der
 # ETH-Nextcloud"). Diese Zeilen fangen eine versehentlich hereinkopierte
 # Arbeitskopie ab.
-projekte.txt
+Projekte.txt
 zeiterfassung_*.csv
 
 # Scratch-Dateien für die Arbeit mit Claude Code

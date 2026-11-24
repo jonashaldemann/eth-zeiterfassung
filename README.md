@@ -93,27 +93,36 @@ vorkommen): bei der D-ARCH-IT nachfragen.
 
 ### 4. Projektliste anlegen
 
-Auf wolke.ethz.ch im persönlichen Dateibereich einen Ordner
-**`Zeiterfassung`** anlegen und darin eine Datei **`projekte.txt`** —
-ein Projekt pro Zeile, optional mit dreistelliger Nummer und Leerschlag
-davor:
+Auf wolke.ethz.ch liegt sie unter **`LLHIL_Jonas/Zeiterfassung/Projekte.txt`**
+— ein Projekt pro Zeile, der ganze Zeileninhalt ist der Projektname:
 
 ```
-021 Digital Passport Explorer
-014 Bauteilkatalog
-007 Aufstockung LLHIL
-003 Lehre / Betreuung
-000 Institut Allgemein
-000 Administration
+Digital Passport Explorer
+Bauteilkatalog
+Aufstockung LLHIL
+Lehre / Betreuung
+Institut Allgemein
+Administration
 ```
 
-Die Nummer ist rein kosmetisch und darf mehrfach vergeben sein (praktisch
-für mehrere interne Kategorien, siehe `000` oben). Zugeordnet, gefiltert und
-eingefärbt wird über den **Namen** — der muss eindeutig sein. Ein Projekt
-umzubenennen trennt bestehende Einträge vom neuen Namen.
+Jede Zeile wird zu einem Knopf, in genau dieser Reihenfolge. Zugeordnet,
+gefiltert und eingefärbt wird über den **Namen** — der muss eindeutig sein
+(die Farbe ist ein Hash des Namens, dasselbe Projekt bekommt also überall
+dieselbe). Ein Projekt umzubenennen trennt bestehende Einträge vom neuen
+Namen; eine Zeile zu löschen lässt den Knopf verschwinden, die bereits
+erfassten Zeiten bleiben in der CSV stehen.
+
+Projektnummern gibt es hier nicht (die Büro-App parste eine führende
+dreistellige Nummer heraus; das ist hier entfernt, damit ein Name, der
+zufällig mit Ziffern beginnt, nicht verstümmelt wird).
 
 Ändern geht jederzeit: Datei in Nextcloud bearbeiten, alle Geräte ziehen
 spätestens nach 60 Sekunden nach. Kein Deploy nötig.
+
+Pfad und Dateiname stehen als `DATA_FOLDER_PATH` und `PROJEKTE_DATEINAME`
+oben in `shared/common.js`. **WebDAV unterscheidet Gross- und
+Kleinschreibung** — `Projekte.txt` und `projekte.txt` sind zwei verschiedene
+Dateien.
 
 ### 5. In der App anmelden
 
@@ -128,13 +137,14 @@ geladen; die Beispieldaten sind danach weg.
 ## Ablage auf der ETH-Nextcloud
 
 Alles liegt im persönlichen Dateibereich unter einem Ordner (einstellbar über
-`DATA_FOLDER_PATH` in `shared/common.js`, Standard `Zeiterfassung`):
+`DATA_FOLDER_PATH` in `shared/common.js`):
 
 ```
-Zeiterfassung/
-├── projekte.txt              ← von Hand gepflegt (Schritt 4)
-├── zeiterfassung_2026.csv    ← legt die App selbst an
-└── zeiterfassung_2025.csv
+LLHIL_Jonas/
+└── Zeiterfassung/
+    ├── Projekte.txt              ← von Hand gepflegt (Schritt 4)
+    ├── zeiterfassung_2026.csv    ← legt die App selbst an
+    └── zeiterfassung_2025.csv
 ```
 
 Der Ordner wird bei Bedarf automatisch angelegt (`MKCOL`, Ebene für Ebene).
@@ -154,9 +164,9 @@ Datum,Projekt,Dauer_Min,Kommentar,Person,ProjektID
 - `Kommentar` bezieht sich auf die Tagessumme, in der "Heute"-Liste nur für
   den **heutigen** Tag editierbar.
 - `Person` wird aus dem Benutzernamen abgeleitet (Teil vor dem `@`, erster
-  Buchstabe gross). Die Spalte existiert, weil die Auswertung den ganzen
-  Ordner liest — so liessen sich auch CSVs von anderen auswerten, wenn der
-  Ordner mal geteilt wird.
+  Buchstabe gross). In der Auswertung wird nicht danach gefiltert — die
+  Spalte bleibt trotzdem, damit das Format zur Büro-App kompatibel ist und
+  sich auch fremde CSVs auswerten liessen, falls der Ordner mal geteilt wird.
 - `ProjektID` enthält denselben Wert wie `Projekt`; die Spalte bleibt nur,
   um das CSV-Format nicht zu ändern.
 - Klicks unter 5 Sekunden werden ignoriert (Schutz vor Versehen).
@@ -184,8 +194,17 @@ und als Trennzeichen das Komma wählen, dann stimmen die Spalten.
 ### Auswertung (`dashboard/`)
 
 Erreichbar über das Balken-Symbol oben rechts. Filter nach Jahr, Zeitraum
-(heute / Woche / Monat / frei), Projekt und Person; dazu Summe, Balken pro
-Projekt und pro Tag sowie die Einzelliste.
+(heute / diese Woche / dieser Monat / frei wählbar) und Projekt; dazu die
+Summe, Balken pro Projekt und pro Tag sowie die Einzelliste.
+
+Den Personen-Filter aus der Büro-App gibt es hier nicht (dort hielt er zwei
+Leute auseinander) — und damit auch die Spalte "Person" in der Tabelle
+nicht, sie stünde auf jeder Zeile gleich.
+
+"Heute"/"Diese Woche"/"Dieser Monat" beziehen sich immer auf das echte
+heutige Datum; weicht das vom gewählten Jahr ab, wechselt das Jahr
+automatisch mit. Ein frei gewählter Zeitraum über einen Jahreswechsel hinweg
+zeigt nur den Teil im geladenen Jahr.
 
 Datenquelle sind die Jahres-CSVs im Ordner: er wird per `PROPFIND`
 aufgelistet, alle `.csv` darin werden zusammengeführt.
@@ -253,8 +272,10 @@ localStorage und Cache-Speicher nach Origin, nicht nach Pfad:
 - **Flache Struktur.** Die App liegt im Wurzelverzeichnis statt in
   `zeiterfassung/`, die Auswertung unter `dashboard/`.
 - **Keine `config.json`.** Mitarbeitende, Büro-Adresse, Fahrzeuge und die
-  übrigen Felder waren für die anderen Module da; geblieben ist
-  `projekte.txt`.
+  übrigen Felder waren für die anderen Module da; geblieben ist die
+  Projektliste.
+- **Keine Projektnummern** in der Projektliste und **kein Personen-Filter**
+  in der Auswertung.
 - **`PROXY_URL` darf leer sein** — dann geht es direkt gegen die Nextcloud
   (siehe Datenschutz oben).
 - **Nur die zwei gebrauchten Webfonts** (Nudica Light/Medium als woff/woff2)

@@ -11,7 +11,7 @@
 // Gleiche Palette wie die Haupt-App, für konsistente Farben pro Projekt.
 const PROJECT_COLOR_PALETTE = ["#4F7089", "#8F9A85", "#C97960", "#626F68", "#8C8171", "#7A95A6"];
 
-let allRows = []; // alle geladenen Zeilen (über alle Personen), ungefiltert
+let allRows = []; // alle geladenen Zeilen des gewählten Jahres, ungefiltert
 
 // ---------- CSV-Parsing (gleiche Logik wie Haupt-App) ----------
 
@@ -129,19 +129,21 @@ async function loadAllData(year) {
 
 // ---------- Filter-UI ----------
 
+// Kein Personen-Filter: die CSVs im eigenen Nextcloud-Ordner stammen alle von
+// einer Person. Die Spalte "Person" bleibt trotzdem in der CSV (siehe
+// CSV_HEADER in app.js) -- das Format soll zur Büro-App kompatibel bleiben,
+// falls der Ordner einmal geteilt wird.
 function populateFilters() {
   const projectSelect = document.getElementById("filterProject");
-  const personSelect = document.getElementById("filterPerson");
-
+  // Auswahl über das Neuaufbauen hinweg halten, sonst springt der Filter bei
+  // jedem Jahreswechsel/Aktualisieren zurück auf "Alle Projekte".
+  const bisher = projectSelect.value;
   const projects = [...new Set(allRows.map((r) => r.project))].sort();
-  const persons = [...new Set(allRows.map((r) => r.person))].sort();
 
   projectSelect.innerHTML =
     '<option value="">Alle Projekte</option>' +
     projects.map((p) => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join("");
-  personSelect.innerHTML =
-    '<option value="">Alle Personen</option>' +
-    persons.map((p) => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join("");
+  if (bisher && projects.includes(bisher)) projectSelect.value = bisher;
 }
 
 // Erstes Jahr, für das überhaupt Zeiterfassungs-CSVs existieren -- ein
@@ -234,12 +236,10 @@ function getActiveRange() {
 
 function getFilteredRows() {
   const project = document.getElementById("filterProject").value;
-  const person = document.getElementById("filterPerson").value;
   const { von, bis } = getActiveRange();
 
   return allRows.filter((r) => {
     if (project && r.project !== project) return false;
-    if (person && r.person !== person) return false;
     if (r.date < von || r.date > bis) return false;
     return true;
   });
@@ -351,7 +351,8 @@ function groupByDay(rows, range) {
 function renderSummary(rows) {
   const totalMin = rows.reduce((sum, r) => sum + r.durationMin, 0);
   document.getElementById("summaryTotal").textContent = formatHM(totalMin);
-  document.getElementById("summarySub").textContent = `${rows.length} Eintrag/Einträge im aktuellen Filter`;
+  const wort = rows.length === 1 ? "Eintrag" : "Einträge";
+  document.getElementById("summarySub").textContent = `${rows.length} ${wort} im aktuellen Filter`;
 }
 
 function renderBarChart(containerId, grouped, colorByProject) {
@@ -408,7 +409,7 @@ function renderDayBarChart(containerId, grouped) {
 function renderTable(rows) {
   const body = document.getElementById("entriesBody");
   if (rows.length === 0) {
-    body.innerHTML = '<tr class="empty-row"><td colspan="5">Keine Einträge für diesen Filter</td></tr>';
+    body.innerHTML = '<tr class="empty-row"><td colspan="4">Keine Einträge für diesen Filter</td></tr>';
     return;
   }
   const sorted = [...rows].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
@@ -417,7 +418,6 @@ function renderTable(rows) {
       (r) => `<tr>
         <td>${escapeHtml(r.date)}</td>
         <td>${escapeHtml(r.project)}</td>
-        <td>${escapeHtml(r.person)}</td>
         <td>${formatHM(r.durationMin)}</td>
         <td class="comment-cell">${escapeHtml(r.comment)}</td>
       </tr>`
@@ -449,7 +449,6 @@ function init() {
 
   document.getElementById("filterYear").addEventListener("change", refresh);
   document.getElementById("filterProject").addEventListener("change", renderAll);
-  document.getElementById("filterPerson").addEventListener("change", renderAll);
   document.getElementById("filterZeitraum").addEventListener("change", onZeitraumChange);
   document.getElementById("filterVon").addEventListener("change", onFreiRangeChange);
   document.getElementById("filterBis").addEventListener("change", renderAll);
