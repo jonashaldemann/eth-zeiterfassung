@@ -124,6 +124,20 @@ oben in `shared/common.js`. **WebDAV unterscheidet Gross- und
 Kleinschreibung** — `Projekte.txt` und `projekte.txt` sind zwei verschiedene
 Dateien.
 
+**Falle beim Anlegen unter Windows:** der Explorer blendet bekannte
+Dateiendungen aus. Tippt man dort „Projekte.txt", heisst die Datei in
+Wirklichkeit `Projekte.txt.txt` — angezeigt wird trotzdem nur „Projekte.txt",
+und die App findet sie nicht. Entweder im Explorer nur `Projekte` eingeben
+(die Endung kommt von selbst), oder die Datei gleich im Browser auf
+wolke.ethz.ch anlegen (**+ → Neue Textdatei**); dort steht immer der volle
+Name. Zweite Stolperstelle am selben Ort: was der Nextcloud-Client noch nicht
+hochgeladen hat, gibt es für die App nicht — sie liest ausschliesslich vom
+Server.
+
+Findet die App die Liste nicht, zeigt sie an der Stelle der Knöpfe den Grund
+und listet dazu auf, was im Ordner tatsächlich liegt. Damit sind genau diese
+beiden Fälle auf einen Blick zu sehen.
+
 ### 5. In der App anmelden
 
 Zahnrad-Symbol → **Benutzername** (ETH-Kürzel, z.B. `jonasha`) und
