@@ -345,6 +345,32 @@ function parseProjectList(text) {
 
 const projekteRueckzug = rueckzug(60, 900); // 1 min, verdoppelnd bis 15 min
 
+// Bei einem 404 nachsehen, was im Zielordner tatsächlich liegt. "Datei nicht
+// gefunden" allein lässt einen raten: heisst sie anders, ist die
+// Gross-/Kleinschreibung daneben, hat Windows ein zweites ".txt" angehängt,
+// liegt der Ordner woanders, oder ist die Datei vom Nextcloud-Client noch gar
+// nicht hochgeladen? Die Antwort steht im Ordner -- also holen wir sie, statt
+// sie den Nutzer suchen zu lassen. Läuft nur im Fehlerfall und unter dem
+// Rückzug (siehe rueckzug()), kostet also keine Dauerlast.
+const PROPFIND_NAMEN_BODY =
+  '<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:"><d:prop><d:displayname/></d:prop></d:propfind>';
+
+async function ordnerInhaltNamen(folderPath) {
+  const relPath = davPath(ncSegments(folderPath).join("/") + "/");
+  const res = await proxyFetch(relPath, {
+    method: "PROPFIND",
+    headers: { ...authHeader(), Depth: "1", "Content-Type": "application/xml" },
+    body: PROPFIND_NAMEN_BODY
+  });
+  if (res.status === 404) return { ordnerDa: false, namen: [] };
+  if (!res.ok) throw new Error(`Status ${res.status}`);
+  const doc = new DOMParser().parseFromString(await res.text(), "application/xml");
+  const namen = Array.from(doc.getElementsByTagNameNS("DAV:", "href"))
+    .map((el) => decodeURIComponent(el.textContent.replace(/\/$/, "").split("/").pop() || ""))
+    .slice(1); // der erste Eintrag ist der abgefragte Ordner selbst
+  return { ordnerDa: true, namen };
+}
+
 // Schlägt das Laden fehl (offline, Datei noch nicht angelegt), bleibt der
 // letzte bekannte Stand erhalten statt die Liste zu leeren.
 async function refreshProjekte() {
@@ -368,7 +394,23 @@ async function refreshProjekte() {
     saveJSON(LS_PROJEKTE_CACHE, projekte);
   } catch (err) {
     const wartenSek = projekteRueckzug.fehler();
-    projekteFehler = `${err.message} – nächster Versuch in ${Math.round(wartenSek / 60) || 1} min`;
+    let zusatz = "";
+    // Nur beim 404 nachfassen -- bei 401/429 weiss man den Grund schon, und
+    // eine zweite Anfrage wäre dort gerade das Falsche.
+    if (err.message.includes("404")) {
+      try {
+        const { ordnerDa, namen } = await ordnerInhaltNamen(DATA_FOLDER_PATH);
+        zusatz = !ordnerDa
+          ? `. Den Ordner "${DATA_FOLDER_PATH}" gibt es dort auch nicht`
+          : namen.length
+            ? `. Im Ordner liegen: ${namen.join(", ")}`
+            : `. Der Ordner "${DATA_FOLDER_PATH}" ist leer`;
+      } catch (e) {
+        // Nebensache -- die eigentliche Meldung steht schon.
+        console.warn("Ordnerinhalt liess sich nicht lesen:", e);
+      }
+    }
+    projekteFehler = `${err.message}${zusatz} – nächster Versuch in ${Math.round(wartenSek / 60) || 1} min`;
     console.warn(`${projekteQuellePfad()} konnte nicht geladen werden:`, err);
   }
   return projekte;
