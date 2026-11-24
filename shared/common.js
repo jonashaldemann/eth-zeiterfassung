@@ -103,6 +103,39 @@ function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
+// ---------- Rückzug bei Fehlschlägen ----------
+//
+// Projektliste und Sync laufen auf festen Zeitgebern (60s bzw. 30s). Solange
+// alles klappt, ist das richtig. Scheitert etwas dauerhaft -- falscher
+// Benutzername, Datei weg, Server mault -- hämmerte die App bisher
+// unbegrenzt im selben Takt weiter. Nextcloud hat eine Bremse gegen zu viele
+// (Fehl-)Versuche pro IP, und die IP ist hier nicht die des Nutzers, sondern
+// die des Cloudflare Workers: ein einziges falsch eingerichtetes Gerät kann
+// sich so selbst aussperren (HTTP 429, "Too Many Requests").
+//
+// Deshalb: nach jedem Fehlschlag die Wartezeit verdoppeln, gedeckelt. Beim
+// ersten Erfolg (und beim Speichern neuer Zugangsdaten) ist alles wieder
+// zurückgesetzt -- wer etwas repariert, soll nicht warten müssen.
+function rueckzug(basisSek, maxSek) {
+  let fehlversuche = 0;
+  let naechsterVersuch = 0;
+  return {
+    darf: () => Date.now() >= naechsterVersuch,
+    // Verbleibende Wartezeit in Sekunden (0 = darf sofort wieder).
+    restSek: () => Math.max(0, Math.ceil((naechsterVersuch - Date.now()) / 1000)),
+    erfolg() {
+      fehlversuche = 0;
+      naechsterVersuch = 0;
+    },
+    fehler() {
+      fehlversuche++;
+      const wartenSek = Math.min(basisSek * 2 ** (fehlversuche - 1), maxSek);
+      naechsterVersuch = Date.now() + wartenSek * 1000;
+      return wartenSek;
+    }
+  };
+}
+
 // ---------- Nextcloud / WebDAV ----------
 
 let settings = loadJSON(SETTINGS_KEY, DEFAULT_SETTINGS);
@@ -310,24 +343,32 @@ function parseProjectList(text) {
     .map((name, i) => ({ id: `P${i + 1}`, name }));
 }
 
+const projekteRueckzug = rueckzug(60, 900); // 1 min, verdoppelnd bis 15 min
+
 // Schlägt das Laden fehl (offline, Datei noch nicht angelegt), bleibt der
 // letzte bekannte Stand erhalten statt die Liste zu leeren.
 async function refreshProjekte() {
   if (!isConfigured()) return projekte;
+  if (!projekteRueckzug.darf()) return projekte;
   try {
     const res = await proxyFetch(projekteDavPath(), { method: "GET", headers: authHeader() });
     // 404 ist der häufigste Fall und verdient eine eigene Sprache: die Datei
     // heisst anders, liegt woanders, oder die Gross-/Kleinschreibung weicht
     // ab (WebDAV unterscheidet sie).
-    if (res.status === 404) throw new Error(`Datei nicht gefunden (404)`);
-    if (res.status === 401) throw new Error(`Zugangsdaten abgelehnt (401)`);
+    if (res.status === 404) throw new Error("Datei nicht gefunden (404)");
+    if (res.status === 401) throw new Error("Zugangsdaten abgelehnt (401)");
+    // 429 kommt von der Nextcloud-Bremse gegen zu viele Versuche pro IP --
+    // und die IP ist die des Proxys, nicht die des Geräts. Siehe rueckzug().
+    if (res.status === 429) throw new Error("Zu viele Anfragen (429) – Nextcloud bremst gerade ab");
     if (!res.ok) throw new Error(`Status ${res.status}`);
     projekte = parseProjectList(await res.text());
     projekteFehler = null;
     projekteGeladen = true;
+    projekteRueckzug.erfolg();
     saveJSON(LS_PROJEKTE_CACHE, projekte);
   } catch (err) {
-    projekteFehler = err.message;
+    const wartenSek = projekteRueckzug.fehler();
+    projekteFehler = `${err.message} – nächster Versuch in ${Math.round(wartenSek / 60) || 1} min`;
     console.warn(`${projekteQuellePfad()} konnte nicht geladen werden:`, err);
   }
   return projekte;
@@ -450,6 +491,10 @@ function saveSettings(onSaved) {
   settings.appPassword = appPassword;
   settings.displayName = deriveDisplayName(settings.username);
   saveJSON(SETTINGS_KEY, settings);
+  // Wer gerade etwas korrigiert hat, soll nicht erst die Rückzugsfrist
+  // absitzen müssen -- neue Zugangsdaten heben die Wartezeit auf.
+  projekteRueckzug.erfolg();
+  projekteFehler = null;
   closeSettingsFn();
   entferneDemoBanner();
   if (typeof onSaved === "function") onSaved();

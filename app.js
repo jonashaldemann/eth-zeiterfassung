@@ -298,12 +298,21 @@ function renderSyncLine() {
     line.textContent = "Nextcloud noch nicht eingerichtet · Einstellungen ⚙";
     return;
   }
+  const tage = `${dirtyBuckets.length} Projekttag${dirtyBuckets.length === 1 ? "" : "e"}`;
   if (dirtyBuckets.length === 0) {
     line.textContent = "Synchronisiert";
   } else if (!navigator.onLine) {
-    line.textContent = `Offline · ${dirtyBuckets.length} Projekttag(e) werden später synchronisiert`;
+    line.textContent = `Offline · ${tage} werden später synchronisiert`;
+  } else if (syncFehler) {
+    // Den Grund zeigen statt "wird synchronisiert…" zu behaupten, während in
+    // Wirklichkeit jeder Versuch scheitert. Die Einträge selbst sind sicher:
+    // sie liegen lokal und werden beim nächsten geglückten Versuch
+    // nachgeliefert.
+    const rest = syncRueckzug.restSek();
+    const wann = rest > 0 ? ` · neuer Versuch in ${Math.ceil(rest / 60)} min` : "";
+    line.textContent = `${tage} nicht gespeichert: ${syncFehler}${wann}`;
   } else {
-    line.textContent = `${dirtyBuckets.length} Projekttag(e) werden synchronisiert…`;
+    line.textContent = `${tage} werden synchronisiert…`;
   }
 }
 
@@ -539,12 +548,19 @@ function ensureFolder() {
 }
 
 let syncing = false;
+let syncFehler = null; // Grund des letzten Fehlschlags, für die Statuszeile
+// Wie bei der Projektliste: bei dauerhaftem Fehlschlag Wartezeit verdoppeln
+// statt unbegrenzt alle 30s weiterzuprobieren (siehe rueckzug() in
+// shared/common.js). Nicht synchronisierte Einträge bleiben derweil lokal
+// liegen und gehen nicht verloren.
+const syncRueckzug = rueckzug(30, 900); // 30 s, verdoppelnd bis 15 min
 
 async function trySync() {
   if (syncing) return;
   if (!isConfigured()) { renderSyncLine(); return; }
   if (dirtyBuckets.length === 0) { renderSyncLine(); return; }
   if (!navigator.onLine) { renderSyncLine(); return; }
+  if (!syncRueckzug.darf()) { renderSyncLine(); return; }
 
   syncing = true;
   try {
@@ -557,6 +573,10 @@ async function trySync() {
       existingText = await getRes.text();
     } else if (getRes.status === 404) {
       existingText = CSV_HEADER + "\n";
+    } else if (getRes.status === 429) {
+      throw new Error("Zu viele Anfragen (429) – Nextcloud bremst ab");
+    } else if (getRes.status === 401) {
+      throw new Error("Zugangsdaten abgelehnt (401)");
     } else {
       throw new Error(`Lesen fehlgeschlagen (${getRes.status})`);
     }
@@ -599,8 +619,12 @@ async function trySync() {
 
     dirtyBuckets = dirtyBuckets.filter((k) => !keysToSync.includes(k));
     saveState();
+    syncRueckzug.erfolg();
+    syncFehler = null;
     renderSyncLine();
   } catch (err) {
+    syncRueckzug.fehler();
+    syncFehler = err.message;
     console.warn("Sync fehlgeschlagen:", err);
     renderSyncLine();
   } finally {
