@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#F2EFEA">
+<title>Zeiterfassung — Auswertung</title>
+<link rel="icon" href="../icons/zeiterfassung-192.png">
+<link rel="stylesheet" href="../css/style.css?v=2">
+<link rel="stylesheet" href="css/style.css?v=2">
+</head>
+<body>
+
+<header class="topbar">
+  <h1>Auswertung</h1>
+  <div class="topbar-actions">
+    <a class="icon-btn" href="../" aria-label="Zeiterfassung" title="Zeiterfassung">
+      <svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 3l9 8h-3v9h-5v-6H11v6H6v-9H3z" fill="currentColor"/></svg>
+    </a>
+    <button id="refreshBtn" class="icon-btn" aria-label="Aktualisieren" title="Aktualisieren">
+      <svg viewBox="0 0 24 24" width="20" height="20"><path d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08a6 6 0 11-1.49-6.14L13 11h7V4l-2.35 2.35z" fill="currentColor"/></svg>
+    </button>
+    <button id="settingsBtn" class="icon-btn" aria-label="Einstellungen" title="Einstellungen">
+      <svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 8a4 4 0 100 8 4 4 0 000-8zm8.94 3.5l1.6-1.25a.5.5 0 00.12-.65l-1.5-2.6a.5.5 0 00-.6-.22l-1.9.76a7.4 7.4 0 00-1.3-.75l-.28-2.02a.5.5 0 00-.5-.43h-3a.5.5 0 00-.5.43l-.28 2.02c-.47.2-.9.45-1.3.75l-1.9-.76a.5.5 0 00-.6.22l-1.5 2.6a.5.5 0 00.12.65l1.6 1.25a7.6 7.6 0 000 1.5l-1.6 1.25a.5.5 0 00-.12.65l1.5 2.6c.13.22.4.31.6.22l1.9-.76c.4.3.83.55 1.3.75l.28 2.02c.05.25.26.43.5.43h3c.24 0 .45-.18.5-.43l.28-2.02c.47-.2.9-.45 1.3-.75l1.9.76c.2.09.47 0 .6-.22l1.5-2.6a.5.5 0 00-.12-.65l-1.6-1.25c.05-.25.06-.5.06-.75s-.01-.5-.06-.75z" fill="currentColor"/></svg>
+    </button>
+  </div>
+</header>
+
+<main>
+  <section class="filters">
+    <select id="filterZeitraum">
+      <option value="">Ganzes Jahr</option>
+      <option value="heute">Heute</option>
+      <option value="woche">Diese Woche</option>
+      <option value="monat">Dieser Monat</option>
+      <option value="frei">Frei wählbar…</option>
+    </select>
+    <select id="filterYear"></select>
+    <select id="filterProject"></select>
+    <select id="filterPerson"></select>
+  </section>
+  <section class="filters" id="freiRangeRow" style="display:none;">
+    <input type="date" id="filterVon">
+    <span class="filters-range-sep">–</span>
+    <input type="date" id="filterBis">
+  </section>
+
+  <section class="status-line" id="statusLine">Lädt…</section>
+
+  <section class="summary-card">
+    <div class="summary-total" id="summaryTotal">–</div>
+    <div class="summary-sub" id="summarySub">&nbsp;</div>
+  </section>
+
+  <section class="chart-block">
+    <h2>Nach Projekt</h2>
+    <div class="bar-chart" id="chartByProject"></div>
+  </section>
+
+  <section class="chart-block">
+    <h2>Nach Tag</h2>
+    <div class="vbar-chart" id="chartByDay"></div>
+  </section>
+
+  <section class="table-block">
+    <h2>Einträge</h2>
+    <div class="table-wrap">
+      <table id="entriesTable">
+        <thead>
+          <tr>
+            <th>Datum</th>
+            <th>Projekt</th>
+            <th>Person</th>
+            <th>Dauer</th>
+            <th>Kommentar</th>
+          </tr>
+        </thead>
+        <tbody id="entriesBody"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<!-- Einstellungen (dieselben Element-IDs wie in allen Modulen, siehe
+     shared/common.js, initSettingsUI()) -->
+<div id="settingsOverlay" class="overlay hidden">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2>Einstellungen</h2>
+      <button id="closeSettings" class="icon-btn" aria-label="Schliessen">&times;</button>
+    </div>
+
+    <div class="form-group">
+      <label>Benutzername</label>
+      <input type="text" id="inputUser" placeholder="max">
+      <label>App-Passwort</label>
+      <div class="password-field">
+        <input type="password" id="inputPass" placeholder="App-Passwort (Einstellungen → Sicherheit)">
+        <button type="button" id="togglePassBtn" class="password-toggle" aria-label="Passwort anzeigen" title="Passwort anzeigen">
+          <svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 5c-5 0-9.27 3.11-11 7 1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7zm0 12a5 5 0 110-10 5 5 0 010 10zm0-8a3 3 0 100 6 3 3 0 000-6z" fill="currentColor"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button id="testConnBtn" class="btn-secondary">Verbindung testen</button>
+      <button id="saveSettingsBtn" class="btn-primary">Speichern</button>
+    </div>
+    <div id="testResult" class="test-result"></div>
+
+    <p class="hint">
+      Das App-Passwort erstellst du auf wolke.ethz.ch unter
+      Einstellungen → Sicherheit → Neues App-Passwort erstellen. Es wird
+      nur in diesem Browser gespeichert (localStorage) und ist dort
+      jederzeit einzeln widerrufbar — nie das ETH-Passwort eintragen.
+    </p>
+  </div>
+</div>
+
+<script src="../shared/common.js?v=2"></script>
+<script src="js/dashboard.js?v=2"></script>
+</body>
+</html>

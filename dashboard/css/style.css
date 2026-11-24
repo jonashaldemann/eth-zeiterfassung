@@ -1,0 +1,189 @@
+/* Schriften, Farbtokens und die Dialog-/Formular-Styles kommen aus dem
+   gemeinsamen ../../css/style.css, das in index.html VOR dieser Datei
+   geladen wird. Hier stehen nur die Regeln, die dieses Dashboard allein
+   betreffen (breitere Spalte, Filterleiste, Diagramme). */
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-light);
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 10px;
+}
+.topbar h1 {
+  font-family: var(--font-medium);
+  font-size: 18px;
+  font-weight: normal;
+  margin: 0;
+}
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.icon-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  padding: 6px;
+  border-radius: 8px;
+}
+.icon-btn:active { background: var(--surface-2); }
+
+main {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 0 16px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.filters select, .filters input[type="date"] {
+  flex: 1;
+  min-width: 110px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-family: var(--font-light);
+  font-size: 14px;
+}
+.filters-range-sep {
+  align-self: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  flex: none;
+}
+
+.status-line {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.summary-card {
+  background: var(--surface);
+  border-radius: 18px;
+  padding: 20px;
+  text-align: center;
+}
+.summary-total {
+  font-family: var(--font-medium);
+  font-size: 32px;
+}
+.summary-sub {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.chart-block h2, .table-block h2 {
+  font-family: var(--font-medium);
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: normal;
+  margin: 0 0 8px 4px;
+}
+
+.bar-chart {
+  background: var(--surface);
+  border-radius: 14px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.bar-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.bar-row-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+}
+.bar-row-name { font-family: var(--font-medium); }
+.bar-row-value { color: var(--text-muted); }
+.bar-track {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 4px;
+}
+.bar-empty {
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 6px 0;
+}
+
+.vbar-chart {
+  background: var(--surface);
+  border-radius: 14px;
+  padding: 14px 16px;
+  height: 140px;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+}
+/* flex:1 1 0 statt einer festen Breite -- dadurch teilen sich alle Balken
+   immer die volle Containerbreite, egal wie viele es sind (siehe
+   renderDayBarChart() in dashboard.js); kein horizontales Scrollen mehr
+   nötig, auch nicht bei einem ganzen Jahr mit bis zu 366 Balken.
+   max-width begrenzt die Breite bei wenigen Tagen (Woche/Monat), damit die
+   Balken dort nicht unnötig breit gezogen werden. */
+.vbar {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 10px;
+  min-height: 2px;
+  border-radius: 3px 3px 0 0;
+  background: var(--accent-primary);
+}
+.vbar-empty { background: var(--surface-2); }
+
+.table-block {
+  background: var(--surface);
+  border-radius: 14px;
+  padding: 4px 0;
+  overflow: hidden;
+}
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td {
+  text-align: left;
+  padding: 10px 12px;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+th {
+  font-family: var(--font-medium);
+  font-weight: normal;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+td.comment-cell { white-space: normal; min-width: 160px; color: var(--text-muted); }
+tbody tr:last-child td { border-bottom: none; }
+.empty-row td { text-align: center; color: var(--text-muted); padding: 20px; }

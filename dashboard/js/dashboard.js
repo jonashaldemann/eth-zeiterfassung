@@ -1,0 +1,461 @@
+/* ============================================================
+   Zeiterfassung — Auswertungs-Dashboard
+   Liest die Zeiterfassungs-CSVs aus dem Nextcloud-Ordner der
+   angemeldeten Person und stellt sie filterbar dar.
+
+   Datenzugriff läuft über ../shared/common.js, dieselbe Schicht wie
+   die Haupt-App: angemeldet -> echte Daten von wolke.ethz.ch, nicht
+   angemeldet -> Demo-Beispieldaten.
+   ============================================================ */
+
+// Gleiche Palette wie die Haupt-App, für konsistente Farben pro Projekt.
+const PROJECT_COLOR_PALETTE = ["#4F7089", "#8F9A85", "#C97960", "#626F68", "#8C8171", "#7A95A6"];
+
+let allRows = []; // alle geladenen Zeilen (über alle Personen), ungefiltert
+
+// ---------- CSV-Parsing (gleiche Logik wie Haupt-App) ----------
+
+function parseCsvLine(line) {
+  const result = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (line[i + 1] === '"') { cur += '"'; i++; } else { inQuotes = false; }
+      } else {
+        cur += c;
+      }
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ",") {
+      result.push(cur);
+      cur = "";
+    } else {
+      cur += c;
+    }
+  }
+  result.push(cur);
+  return result;
+}
+
+function parseCsvRows(text) {
+  const lines = text.split(/\r?\n/).filter((l) => l.length > 0);
+  return lines.slice(1).map((line) => {
+    const [date, project, durationMin, comment, person, projectId] = parseCsvLine(line);
+    return {
+      date,
+      project,
+      durationMin: parseFloat(durationMin) || 0,
+      comment: comment || "",
+      person: person || "",
+      projectId: projectId || ""
+    };
+  });
+}
+
+// ---------- Datenladen ----------
+//
+// proxyFetch/authHeader/davPath/ncSegments/DATA_FOLDER_PATH kommen aus
+// ../shared/common.js -- dieselbe Schicht wie in der Haupt-App. Ohne
+// gespeicherte Zugangsdaten antwortet dort die Demo-Attrappe mit
+// Beispieldaten, das Dashboard braucht dafür keinen eigenen Sonderfall.
+
+const ZEITERFASSUNG_FOLDER_PATH = DATA_FOLDER_PATH;
+
+function zeitSegments() {
+  return ncSegments(ZEITERFASSUNG_FOLDER_PATH);
+}
+
+const PROPFIND_LIST_BODY =
+  '<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:"><d:prop><d:displayname/></d:prop></d:propfind>';
+
+// Alle CSV-Dateien im Zeiterfassungs-Ordner. Die Haupt-App legt pro Jahr
+// eine Datei an (zeiterfassung_2026.csv); gelesen wird der ganze Ordner,
+// damit auch von Hand abgelegte oder anders benannte CSVs mitkommen.
+async function listCsvFilenames() {
+  const relPath = davPath(zeitSegments().join("/") + "/");
+  const res = await proxyFetch(relPath, {
+    method: "PROPFIND",
+    headers: { ...authHeader(), Depth: "1", "Content-Type": "application/xml" },
+    body: PROPFIND_LIST_BODY
+  });
+  if (!res.ok) throw new Error(`Ordnerinhalt lesen fehlgeschlagen (${res.status})`);
+  const doc = new DOMParser().parseFromString(await res.text(), "application/xml");
+  return Array.from(doc.getElementsByTagNameNS("DAV:", "href"))
+    .map((el) => decodeURIComponent(el.textContent.replace(/\/$/, "").split("/").pop() || ""))
+    .filter((name) => name.toLowerCase().endsWith(".csv"));
+}
+
+async function fetchCsv(filename) {
+  const relPath = davPath([...zeitSegments(), filename].join("/"));
+  const res = await proxyFetch(relPath, { method: "GET", headers: authHeader() });
+  if (res.status === 404) return "";
+  if (!res.ok) throw new Error(`${filename}: Status ${res.status}`);
+  return await res.text();
+}
+
+async function loadAllData(year) {
+  const statusLine = document.getElementById("statusLine");
+  statusLine.textContent = "Lädt…";
+  allRows = [];
+
+  try {
+    const alle = await listCsvFilenames();
+    // Zu einem Jahr gehören alle Dateien, deren Name die Jahreszahl trägt;
+    // Dateien ohne Jahreszahl werden immer mitgelesen und danach über die
+    // Datumsspalte gefiltert.
+    const passend = alle.filter((n) => n.includes(String(year)) || !/\d{4}/.test(n));
+    const texte = await Promise.all(passend.map(fetchCsv));
+    const rows = [];
+    texte.forEach((t) => {
+      if (t) rows.push(...parseCsvRows(t));
+    });
+    allRows = rows.filter((r) => (r.date || "").startsWith(String(year)));
+
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, "0");
+    const mm = String(now.getMinutes()).padStart(2, "0");
+    const quelle = istDemo() ? "Beispieldaten" : "Stand";
+    statusLine.textContent = `${quelle}: ${hh}:${mm} · ${allRows.length} Einträge geladen`;
+  } catch (err) {
+    console.warn("Auswertung konnte nicht geladen werden:", err);
+    statusLine.textContent = navigator.onLine
+      ? "Daten konnten nicht geladen werden."
+      : "Offline – keine Daten geladen.";
+  }
+}
+
+// ---------- Filter-UI ----------
+
+function populateFilters() {
+  const projectSelect = document.getElementById("filterProject");
+  const personSelect = document.getElementById("filterPerson");
+
+  const projects = [...new Set(allRows.map((r) => r.project))].sort();
+  const persons = [...new Set(allRows.map((r) => r.person))].sort();
+
+  projectSelect.innerHTML =
+    '<option value="">Alle Projekte</option>' +
+    projects.map((p) => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join("");
+  personSelect.innerHTML =
+    '<option value="">Alle Personen</option>' +
+    persons.map((p) => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join("");
+}
+
+// Erstes Jahr, für das überhaupt Zeiterfassungs-CSVs existieren -- ein
+// fester Wert statt z.B. "letzte 3 Jahre", damit ältere Jahre nicht jedes
+// Jahr aufs Neue aus der Auswahl rutschen (siehe Rückmeldung: 2023 war mit
+// einem rollenden 3-Jahres-Fenster nicht mehr wählbar).
+const EARLIEST_YEAR = 2023;
+
+function populateYearFilter() {
+  const yearSelect = document.getElementById("filterYear");
+  const currentYear = new Date().getFullYear();
+  const years = [];
+  for (let y = currentYear; y >= EARLIEST_YEAR; y--) years.push(y);
+  yearSelect.innerHTML = years.map((y) => `<option value="${y}">${y}</option>`).join("");
+  yearSelect.value = String(currentYear);
+}
+
+// ---------- Zeitraum-Filter (Tag/Woche/Monat/frei, zusätzlich zum Jahr) ----------
+//
+// Die Jahres-CSV wird weiterhin komplett geladen (siehe loadAllData()); der
+// Zeitraum-Filter schränkt die schon geladenen Zeilen zusätzlich per
+// Datumsvergleich ein (r.date ist "YYYY-MM-DD", funktioniert darum auch als
+// simpler String-Vergleich). "Heute"/"Diese Woche"/"Dieser Monat" beziehen
+// sich immer auf das echte heutige Datum -- weicht das vom gerade gewählten
+// Jahr ab, wird das Jahr automatisch mitgewechselt (siehe onZeitraumChange()/
+// onFreiRangeChange()), sonst gäbe es scheinbar keine Treffer. Ein
+// "frei wählbar"-Zeitraum, der über einen Jahreswechsel hinausgeht, ist NICHT
+// unterstützt -- gezeigt wird dann nur der Teil im gerade geladenen Jahr.
+function toISODate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+// new Date("YYYY-MM-DD") parst als UTC-Mitternacht -- in Zeitzonen westlich
+// von UTC würde das lokal auf den Vortag zurückfallen. Hier bewusst mit den
+// einzelnen Zahlen konstruiert, damit es immer der lokale Tag bleibt.
+function parseISODate(iso) {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+function startOfWeek(d) {
+  // Montag als Wochenbeginn.
+  const diff = (d.getDay() + 6) % 7;
+  const monday = new Date(d.getFullYear(), d.getMonth(), d.getDate() - diff);
+  return monday;
+}
+function computeZeitraumRange(zeitraum) {
+  const now = new Date();
+  if (zeitraum === "heute") {
+    const iso = toISODate(now);
+    return { von: iso, bis: iso };
+  }
+  if (zeitraum === "woche") {
+    const monday = startOfWeek(now);
+    const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
+    return { von: toISODate(monday), bis: toISODate(sunday) };
+  }
+  if (zeitraum === "monat") {
+    const first = new Date(now.getFullYear(), now.getMonth(), 1);
+    const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return { von: toISODate(first), bis: toISODate(last) };
+  }
+  return null;
+}
+
+// Fehlt eine explizite Zeitraum-Eingabe (Filter "ganzes Jahr", oder "frei"
+// mit nur einer gesetzten Seite), wird der Bereich auf das ganze geladene
+// Jahr ergänzt -- beim gerade laufenden Jahr nur bis heute, damit der
+// Tages-Balken (siehe groupByDay()) nicht mit leeren Balken für die Zukunft
+// endet.
+function effectiveRangeEnd(year) {
+  const currentYear = new Date().getFullYear();
+  if (Number(year) === currentYear) return toISODate(new Date());
+  return `${year}-12-31`;
+}
+function getActiveRange() {
+  const year = document.getElementById("filterYear").value;
+  const zeitraum = document.getElementById("filterZeitraum").value;
+
+  let von = null;
+  let bis = null;
+  if (zeitraum === "frei") {
+    von = document.getElementById("filterVon").value || null;
+    bis = document.getElementById("filterBis").value || null;
+  } else if (zeitraum) {
+    const range = computeZeitraumRange(zeitraum);
+    von = range.von;
+    bis = range.bis;
+  }
+  return { von: von || `${year}-01-01`, bis: bis || effectiveRangeEnd(year) };
+}
+
+function getFilteredRows() {
+  const project = document.getElementById("filterProject").value;
+  const person = document.getElementById("filterPerson").value;
+  const { von, bis } = getActiveRange();
+
+  return allRows.filter((r) => {
+    if (project && r.project !== project) return false;
+    if (person && r.person !== person) return false;
+    if (r.date < von || r.date > bis) return false;
+    return true;
+  });
+}
+
+// Bei "Heute"/"Diese Woche"/"Dieser Monat" (immer bezogen aufs echte
+// heutige Datum) bzw. beim "von"-Datum des freien Zeitraums: falls das
+// implizierte Jahr nicht dem gerade geladenen entspricht, das Jahr
+// mitwechseln und neu laden -- sonst zeigt der Filter scheinbar nichts an.
+function syncYearToImpliedDate(isoDate) {
+  if (!isoDate) return false;
+  const impliedYear = isoDate.slice(0, 4);
+  const yearSelect = document.getElementById("filterYear");
+  const hasOption = Array.from(yearSelect.options).some((o) => o.value === impliedYear);
+  if (hasOption && yearSelect.value !== impliedYear) {
+    yearSelect.value = impliedYear;
+    return true;
+  }
+  return false;
+}
+
+function onZeitraumChange() {
+  const zeitraum = document.getElementById("filterZeitraum").value;
+  document.getElementById("freiRangeRow").style.display = zeitraum === "frei" ? "" : "none";
+
+  const range = zeitraum && zeitraum !== "frei" ? computeZeitraumRange(zeitraum) : null;
+  if (range && syncYearToImpliedDate(range.von)) {
+    refresh();
+    return;
+  }
+  renderAll();
+}
+
+function onFreiRangeChange() {
+  const von = document.getElementById("filterVon").value;
+  if (syncYearToImpliedDate(von)) {
+    refresh();
+    return;
+  }
+  renderAll();
+}
+
+// ---------- Rendering ----------
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function formatHM(totalMin) {
+  const h = Math.floor(totalMin / 60);
+  const m = Math.round(totalMin % 60);
+  return h > 0 ? `${h} h ${String(m).padStart(2, "0")} min` : `${m} min`;
+}
+
+// Wie in zeiterfassung/app.js: Farbe wird über einen String-Hash des
+// Projektnamens bestimmt, nicht über die (in der zentralen Liste ggf.
+// mehrfach vergebene, z.B. "000" für mehrere interne Kategorien) Nummer.
+function stringHash(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+function projectColorFor(projectName) {
+  if (!projectName) return "#8C8171";
+  return PROJECT_COLOR_PALETTE[stringHash(projectName) % PROJECT_COLOR_PALETTE.length];
+}
+
+function renderAll() {
+  const rows = getFilteredRows();
+  renderSummary(rows);
+  renderBarChart("chartByProject", groupSum(rows, "project"), true);
+  renderDayBarChart("chartByDay", groupByDay(rows, getActiveRange()));
+  renderTable(rows);
+}
+
+function groupSum(rows, field) {
+  const map = {};
+  rows.forEach((r) => {
+    const key = r[field] || "–";
+    if (!map[key]) map[key] = { minutes: 0, projectId: r.projectId };
+    map[key].minutes += r.durationMin;
+  });
+  return Object.entries(map)
+    .map(([name, v]) => ({ name, minutes: v.minutes, projectId: v.projectId }))
+    .sort((a, b) => b.minutes - a.minutes);
+}
+
+// Für "Nach Tag": Summe pro Kalendertag -- über den GANZEN sichtbaren
+// Zeitraum (range), nicht nur über Tage mit tatsächlichen Einträgen. Tage
+// ohne Eintrag landen mit minutes=0 trotzdem in der Liste, damit sie im
+// Diagramm als eigene (sehr kleine) Lücke sichtbar bleiben, statt beim
+// Rendern stillschweigend übersprungen zu werden -- sonst würden z.B. Montag
+// und Mittwoch direkt nebeneinander erscheinen, wenn am Dienstag nichts
+// erfasst wurde.
+function groupByDay(rows, range) {
+  const map = {};
+  rows.forEach((r) => {
+    map[r.date] = (map[r.date] || 0) + r.durationMin;
+  });
+  const result = [];
+  const end = parseISODate(range.bis);
+  for (let d = parseISODate(range.von); d <= end; d.setDate(d.getDate() + 1)) {
+    const iso = toISODate(d);
+    result.push({ date: iso, minutes: map[iso] || 0 });
+  }
+  return result;
+}
+
+function renderSummary(rows) {
+  const totalMin = rows.reduce((sum, r) => sum + r.durationMin, 0);
+  document.getElementById("summaryTotal").textContent = formatHM(totalMin);
+  document.getElementById("summarySub").textContent = `${rows.length} Eintrag/Einträge im aktuellen Filter`;
+}
+
+function renderBarChart(containerId, grouped, colorByProject) {
+  const container = document.getElementById(containerId);
+  if (grouped.length === 0) {
+    container.innerHTML = '<div class="bar-empty">Keine Daten für diesen Filter</div>';
+    return;
+  }
+  const max = Math.max(...grouped.map((g) => g.minutes), 1);
+  container.innerHTML = grouped
+    .map((g) => {
+      const pct = Math.max(4, Math.round((g.minutes / max) * 100));
+      const color = colorByProject ? projectColorFor(g.name) : "#4F7089";
+      return `<div class="bar-row">
+        <div class="bar-row-label">
+          <span class="bar-row-name">${escapeHtml(g.name)}</span>
+          <span class="bar-row-value">${formatHM(g.minutes)}</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color}"></div></div>
+      </div>`;
+    })
+    .join("");
+}
+
+// Vertikale Balken nebeneinander, ein Balken pro Tag -- bewusst ohne
+// Einzelbeschriftung (bei langen Zeiträumen wären das zu viele Labels);
+// stattdessen Datum+Dauer als title-Tooltip beim Hovern/Antippen.
+// Jeder Balken ist ein Flex-Item mit flex:1 1 0 (siehe CSS) -- dadurch
+// teilen sich alle Balken IMMER die volle Breite des Containers, egal wie
+// viele es sind (ganzes Jahr = bis zu 366). Kein horizontales Scrollen
+// nötig, und bei einer Fenstergrösse-Änderung passt sich das von allein neu
+// an (reines CSS, kein Resize-Listener nötig). Der Zwischenraum wird mit der
+// Tagesanzahl kleiner, damit er bei vielen Tagen nicht unverhältnismässig
+// viel von der verfügbaren Breite auffrisst.
+function renderDayBarChart(containerId, grouped) {
+  const container = document.getElementById(containerId);
+  if (grouped.length === 0) {
+    container.innerHTML = '<div class="bar-empty">Keine Daten für diesen Filter</div>';
+    return;
+  }
+  const max = Math.max(...grouped.map((g) => g.minutes), 1);
+  container.style.gap = grouped.length > 120 ? "1px" : grouped.length > 40 ? "2px" : "3px";
+  container.innerHTML = grouped
+    .map((g) => {
+      const hasEntry = g.minutes > 0;
+      const pct = hasEntry ? Math.max(4, Math.round((g.minutes / max) * 100)) : 0;
+      const title = `${g.date}: ${hasEntry ? formatHM(g.minutes) : "keine Einträge"}`;
+      const cls = hasEntry ? "vbar" : "vbar vbar-empty";
+      return `<div class="${cls}" style="height:${pct}%" title="${escapeHtml(title)}"></div>`;
+    })
+    .join("");
+}
+
+function renderTable(rows) {
+  const body = document.getElementById("entriesBody");
+  if (rows.length === 0) {
+    body.innerHTML = '<tr class="empty-row"><td colspan="5">Keine Einträge für diesen Filter</td></tr>';
+    return;
+  }
+  const sorted = [...rows].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  body.innerHTML = sorted
+    .map(
+      (r) => `<tr>
+        <td>${escapeHtml(r.date)}</td>
+        <td>${escapeHtml(r.project)}</td>
+        <td>${escapeHtml(r.person)}</td>
+        <td>${formatHM(r.durationMin)}</td>
+        <td class="comment-cell">${escapeHtml(r.comment)}</td>
+      </tr>`
+    )
+    .join("");
+}
+
+// ---------- Init ----------
+
+async function refresh() {
+  const year = document.getElementById("filterYear").value;
+  await loadAllData(year);
+  populateFilters();
+  renderAll();
+}
+
+function pingRelPath() {
+  return davPath([...zeitSegments(), "_ping"].join("/"));
+}
+
+function init() {
+  initSettingsUI({
+    checkRelPath: pingRelPath,
+    ensureFolderFn: () => ensureFolderPath(zeitSegments()),
+    onSaved: refresh
+  });
+
+  populateYearFilter();
+
+  document.getElementById("filterYear").addEventListener("change", refresh);
+  document.getElementById("filterProject").addEventListener("change", renderAll);
+  document.getElementById("filterPerson").addEventListener("change", renderAll);
+  document.getElementById("filterZeitraum").addEventListener("change", onZeitraumChange);
+  document.getElementById("filterVon").addEventListener("change", onFreiRangeChange);
+  document.getElementById("filterBis").addEventListener("change", renderAll);
+  document.getElementById("refreshBtn").addEventListener("click", refresh);
+
+  refresh();
+}
+
+document.addEventListener("DOMContentLoaded", init);

@@ -1,0 +1,19 @@
+# macOS / Windows
+.DS_Store
+Thumbs.db
+
+# Echte Projektlisten und Zeitdaten gehören NICHT ins Repo -- sie liegen
+# ausschliesslich auf wolke.ethz.ch (siehe README, "Ablage auf der
+# ETH-Nextcloud"). Diese Zeilen fangen eine versehentlich hereinkopierte
+# Arbeitskopie ab.
+projekte.txt
+zeiterfassung_*.csv
+
+# Scratch-Dateien für die Arbeit mit Claude Code
+claude_todos.txt
+todo.txt
+
+# Bildschirmfotos, die kurz im Repo-Root abgelegt werden
+/Bildschirmfoto*.png
+/Screenshot*.png
+/Bildschirmfoto*.jpg
