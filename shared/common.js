@@ -29,13 +29,12 @@ const NEXTCLOUD_ORIGIN = "https://wolke.ethz.ch";
 // (worker.js im Repo-Wurzelverzeichnis), der server-seitig weiterleitet und
 // die fehlenden Header ergänzt. Siehe README, "CORS-Proxy".
 //
-// Hier die eigene Worker-Adresse eintragen, z.B.
-//   "https://eth-zeit-proxy.haldejonas.workers.dev"
+// Ohne Schrägstrich am Ende -- proxyFetch() hängt "?path=..." direkt an.
 //
 // LEER LASSEN ("") heisst: direkt gegen die Nextcloud. Das funktioniert nur,
 // falls die D-ARCH-IT für diese Seite CORS-Header aktiviert -- dann wird der
 // Worker (und damit Cloudflare als Zwischenstation) gar nicht mehr gebraucht.
-const PROXY_URL = "";
+const PROXY_URL = "https://eth-zeit-proxy.haldejonas.workers.dev";
 
 // Ordner im persönlichen Dateibereich auf wolke.ethz.ch, mit "/" getrennt.
 // Darin liegen die Projektliste und die Jahres-CSVs

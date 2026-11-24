@@ -66,7 +66,7 @@ eingerichtet ist.
 4. Cloudflare zeigt die Adresse, z.B.
    `https://eth-zeit-proxy.haldejonas.workers.dev`.
 5. Diese Adresse in `shared/common.js` bei `PROXY_URL` eintragen, committen,
-   pushen.
+   pushen. Eingetragen ist `https://eth-zeit-proxy.haldejonas.workers.dev`.
 
 `worker.js` wird **nicht** automatisch mit dem Repo veröffentlicht — nach
 Änderungen daran muss der Code im Cloudflare-Dashboard erneut eingefügt und
