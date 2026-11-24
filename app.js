@@ -137,6 +137,26 @@ function closeCurrentSession(now) {
 
 function renderProjectButtons() {
   const container = document.getElementById("projectButtons");
+
+  // Keine Projekte -> erklären statt eine leere Knopfreihe zeigen. Ohne das
+  // sieht man nur eine leere Seite und weiss nicht, ob die Datei fehlt,
+  // anders heisst oder der Ordnerpfad nicht stimmt (Gross-/Kleinschreibung!).
+  if (!projectList.length) {
+    const grund = !isConfigured()
+      ? "Noch nicht angemeldet — Zugangsdaten unter dem Zahnrad eintragen."
+      : projekteFehler
+        ? `Die Liste liess sich nicht laden: ${escapeHtml(projekteFehler)}`
+        : projekteGeladen
+          ? "Die Datei ist da, aber leer."
+          : "Wird geladen…";
+    container.innerHTML =
+      `<p class="grid-hinweis">Keine Projekte geladen. ${grund}<br>` +
+      `Erwartet wird <code>${escapeHtml(projekteQuellePfad())}</code> in deinem ` +
+      `Nextcloud-Dateibereich, ein Projektname pro Zeile. Gross- und ` +
+      `Kleinschreibung müssen genau stimmen.</p>`;
+    return;
+  }
+
   container.innerHTML = projectList
     .map((p) => {
       const color = projectColor(p.name) || PROJECT_COLOR_PALETTE[0];
@@ -356,7 +376,11 @@ async function refreshAppData() {
     const list = await refreshProjekte();
     const changed = JSON.stringify(list) !== JSON.stringify(projectList);
     projectList = list;
-    if (changed) renderProjectButtons();
+    // Bei leerer Liste IMMER neu zeichnen: der Inhalt der Knopfreihe ist dann
+    // die Begründung (siehe renderProjectButtons()), und die ändert sich,
+    // ohne dass sich die Liste selbst ändert -- aus "Wird geladen…" wird
+    // z.B. "Datei nicht gefunden (404)".
+    if (changed || !list.length) renderProjectButtons();
     render();
   } catch (err) {
     // Offline oder Datei (noch) nicht erreichbar -> letzten bekannten Stand

@@ -276,6 +276,21 @@ function ncSegments(folderPath) {
 // Kommas/Anführungszeichen. Ändern = Datei in Nextcloud bearbeiten, alle
 // Geräte ziehen spätestens nach 60s nach, kein Deploy nötig.
 let projekte = loadJSON(LS_PROJEKTE_CACHE, []);
+// Grund, warum das letzte Laden scheiterte (null = hat geklappt). Wird in der
+// App angezeigt, wenn gar keine Projekte da sind -- sonst stünde man vor
+// einer leeren Knopfreihe und wüsste nicht, ob es an der Datei, am Pfad oder
+// an der Gross-/Kleinschreibung liegt.
+let projekteFehler = null;
+// Ob überhaupt schon einmal erfolgreich geladen wurde. Ohne das liessen sich
+// "wird noch geladen" und "Datei ist da, aber leer" nicht auseinanderhalten:
+// in beiden Fällen ist die Liste leer und projekteFehler null.
+let projekteGeladen = false;
+
+// Der Ort, an dem die App die Projektliste erwartet -- für Fehlermeldungen,
+// damit man den erwarteten Pfad sieht, statt ihn im Code suchen zu müssen.
+function projekteQuellePfad() {
+  return `${DATA_FOLDER_PATH}/${PROJEKTE_DATEINAME}`;
+}
 
 function projekteDavPath() {
   return davPath([...ncSegments(DATA_FOLDER_PATH), PROJEKTE_DATEINAME].join("/"));
@@ -301,11 +316,19 @@ async function refreshProjekte() {
   if (!isConfigured()) return projekte;
   try {
     const res = await proxyFetch(projekteDavPath(), { method: "GET", headers: authHeader() });
+    // 404 ist der häufigste Fall und verdient eine eigene Sprache: die Datei
+    // heisst anders, liegt woanders, oder die Gross-/Kleinschreibung weicht
+    // ab (WebDAV unterscheidet sie).
+    if (res.status === 404) throw new Error(`Datei nicht gefunden (404)`);
+    if (res.status === 401) throw new Error(`Zugangsdaten abgelehnt (401)`);
     if (!res.ok) throw new Error(`Status ${res.status}`);
     projekte = parseProjectList(await res.text());
+    projekteFehler = null;
+    projekteGeladen = true;
     saveJSON(LS_PROJEKTE_CACHE, projekte);
   } catch (err) {
-    console.warn(`${PROJEKTE_DATEINAME} konnte nicht geladen werden:`, err);
+    projekteFehler = err.message;
+    console.warn(`${projekteQuellePfad()} konnte nicht geladen werden:`, err);
   }
   return projekte;
 }

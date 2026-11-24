@@ -4,7 +4,7 @@
 // dürfen deshalb nur die EIGENEN Caches gelöscht werden, sonst nimmt diese
 // App den anderen bei jedem Update die Offline-Kopie weg.
 const CACHE_PREFIX = "eth-zeiterfassung-";
-const CACHE_NAME = CACHE_PREFIX + "v4";
+const CACHE_NAME = CACHE_PREFIX + "v5";
 
 const ASSETS = [
   "./",

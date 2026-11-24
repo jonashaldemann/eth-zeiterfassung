@@ -126,6 +126,27 @@ main {
   gap: 10px;
 }
 
+/* Erklärung statt leerer Knopfreihe, wenn die Projektliste fehlt
+   (siehe renderProjectButtons() in app.js). Über die volle Breite des
+   Rasters, sonst stünde der Text in einer Spalte von einem Drittel. */
+.grid-hinweis {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.grid-hinweis code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+  word-break: break-all;
+}
+
 .control-buttons {
   display: grid;
   /* Zwei Knöpfe (Stop, Nachtragen) -- "Pause" ist entfallen, es tat
